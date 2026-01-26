@@ -17,7 +17,7 @@
     "subtitle"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "devDependencies": {
     "@types/chrome": "^0.0.256",
     "@types/node": "^20.19.30",
