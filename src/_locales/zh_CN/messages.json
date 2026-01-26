@@ -108,5 +108,8 @@
   },
   "notLoginYet": {
     "message": "未登录，请先登录"
+  },
+  "sourceCode": {
+    "message": "源代码"
   }
 }

@@ -108,5 +108,8 @@
   },
   "notLoginYet": {
     "message": "Not login yet. Please login first."
+  },
+  "sourceCode": {
+    "message": "Source Code"
   }
 }

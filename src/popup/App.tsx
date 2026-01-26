@@ -313,8 +313,19 @@ const App: React.FC = () => {
             {t('howToUse')}
           </Text>
           <List size="sm">
-            <List.Item><a href="https://www.example.com" target="_blank">English Version</a></List.Item>
-            <List.Item><a href="https://www.example.com" target="_blank">中文教程</a></List.Item>
+            <List.Item><a href="https://github.com/hh54188/bilibili-ad-killer" target="_blank">English Version</a></List.Item>
+            <List.Item><a href="https://www.v2think.com/ad-killer" target="_blank">中文教程</a></List.Item>
+          </List>
+        </div>
+        <div style={{ padding: '18px'}}>
+          <Text 
+            size="sm"
+            fw={600}
+          >
+            {t('sourceCode')}
+          </Text>
+          <List size="sm">
+            <List.Item><a href="https://github.com/hh54188/bilibili-ad-killer" target="_blank">GitHub</a></List.Item>
           </List>
         </div>
       </Tabs.Panel>
