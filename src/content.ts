@@ -3,7 +3,10 @@ const DEFAULT_CONFIG = {
   aiModel: 'gemini-2.5-flash',
   autoSkip: true,
   ignoreVideoLessThan5Minutes: true,
-  usingBrowserAIModel: false
+  usingBrowserAIModel: false,
+  usingDify: false,
+  difyServiceAPI: '',
+  difyApiKey: '',
 }
 
 console.log('📺 ✔️ Content script loaded');
@@ -33,9 +36,18 @@ injectScript.onload = () => {
 (document.head || document.documentElement).appendChild(injectScript);
 
 (async () => {
-  const result = await chrome.storage.local.get(['apiKey', 'aiModel', 'autoSkip', 'ignoreVideoLessThan5Minutes', 'usingBrowserAIModel']);
+  const result = await chrome.storage.local.get(['apiKey', 'aiModel', 'autoSkip', 'ignoreVideoLessThan5Minutes', 'usingBrowserAIModel', 'usingDify','difyServiceAPI','difyApiKey']);
   const apiKey = result.apiKey || DEFAULT_CONFIG.apiKey;
   const aiModel = result.aiModel || DEFAULT_CONFIG.aiModel;
+  const usingDify = typeof result.usingDify !== undefined 
+    ? result.usingDify 
+    : DEFAULT_CONFIG.usingDify;
+  const difyServiceAPI = typeof result.difyServiceAPI !== undefined 
+    ? result.difyServiceAPI 
+    : DEFAULT_CONFIG.difyServiceAPI;
+  const difyApiKey = typeof result.difyApiKey !== undefined 
+    ? result.difyApiKey 
+    : DEFAULT_CONFIG.difyApiKey;
   const autoSkip = typeof result.autoSkip !== undefined 
     ? result.autoSkip 
     : DEFAULT_CONFIG.autoSkip;
@@ -57,7 +69,10 @@ injectScript.onload = () => {
         aiModel,
         autoSkip,
         ignoreVideoLessThan5Minutes,
-        usingBrowserAIModel
+        usingBrowserAIModel,
+        usingDify,
+        difyServiceAPI,
+        difyApiKey,
       },
       i18n: {
         noApiKeyProvided: chrome.i18n.getMessage('noApiKeyProvided'),

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Switch, Select, PasswordInput, Button, Stack, Group, Divider, Progress, Text, List } from '@mantine/core';
+import { Switch, Select, PasswordInput, Button, Stack, Group, Divider, Progress, Text, List, Input, InputLabel, TextInput } from '@mantine/core';
 import { Typography } from '@mantine/core';
 import { Tabs } from '@mantine/core';
 import { useForm } from '@mantine/form';
@@ -12,6 +12,8 @@ import './App.css';
 interface ConfigForm {
   aiModel: string;
   apiKey: string;
+  difyServiceAPI?: string;
+  difyApiKey?: string;
 }
 
 const App: React.FC = () => {
@@ -24,6 +26,7 @@ const App: React.FC = () => {
   const [browserModelInDownloading, setBrowserModelInDownloading] = useState<boolean>(false);
   const [browserModelAvailable, setBrowserModelAvailable] = useState<boolean>(false);
   const [usingBrowserAIModel, setUsingBrowserAIModel] = useState<boolean>(DEFAULT_CONFIG.usingBrowserAIModel);
+  const [usingDify, setUsingDify] = useState<boolean>(DEFAULT_CONFIG.usingDify);
 
   async function checkLocalModelAvailability(): Promise<boolean> {
     if (!window.LanguageModel) {
@@ -36,7 +39,7 @@ const App: React.FC = () => {
     const availability = await LanguageModel.availability({
       languages: ["cn"]
     });
-    
+
     console.log("📺 🤖 Browser AI model availability", availability);
     if (availability == "unavailable") {
       showFailedNotification(t("browserModelNotSupported"))
@@ -84,7 +87,7 @@ const App: React.FC = () => {
     try {
       await LanguageModel.create({
         monitor(m) {
-          m.addEventListener('downloadprogress', (e:any) => {
+          m.addEventListener('downloadprogress', (e: any) => {
             const downloadprogress = Math.round(e.loaded * 100);
             console.log("Download progress", downloadprogress)
           });
@@ -95,10 +98,10 @@ const App: React.FC = () => {
       showFailedNotification(t('failedToDownloadModel'))
     }
   }
-  
+
   useEffect(() => {
     const loadSettings = async () => {
-      const result = await chrome.storage.local.get(['autoSkip', 'usingBrowserAIModel', 'ignoreVideoLessThan5Minutes']);
+      const result = await chrome.storage.local.get(['autoSkip', 'usingBrowserAIModel', 'ignoreVideoLessThan5Minutes', 'usingDify']);
       console.log("📺 ✔️ Loading settings:", result.autoSkip, result.usingBrowserAIModel, result.ignoreVideoLessThan5Minutes);
       if (result.autoSkip !== undefined) {
         setAutoSkip(result.autoSkip);
@@ -117,8 +120,13 @@ const App: React.FC = () => {
       } else {
         await chrome.storage.local.set({ ignoreVideoLessThan5Minutes: DEFAULT_CONFIG.ignoreVideoLessThan5Minutes });
       }
+      if (result.usingDify !== undefined) {
+        setUsingDify(result.usingDify);
+      } else {
+        await chrome.storage.local.set({ usingDify: DEFAULT_CONFIG.usingDify });
+      }
     };
-    
+
     loadSettings();
     // checkLocalModelAvailability();
   }, []);
@@ -140,6 +148,11 @@ const App: React.FC = () => {
       position: 'top-right',
     });
   }
+  const updateUsingDify = async (value: boolean) => {
+    setUsingDify(value);
+    await chrome.storage.local.set({ usingDify: value });
+    showSuccessNotification(t('refreshToApply'));
+  }
 
   const updateAutoSkip = async (value: boolean) => {
     setAutoSkip(value);
@@ -152,7 +165,7 @@ const App: React.FC = () => {
     if (!browserAIModelAvailable) {
       return;
     }
-    
+
     setUsingBrowserAIModel(value);
     await chrome.storage.local.set({ usingBrowserAIModel: value });
     showSuccessNotification(t('refreshToApply'));
@@ -169,20 +182,24 @@ const App: React.FC = () => {
     initialValues: {
       aiModel: DEFAULT_CONFIG.aiModel,
       apiKey: DEFAULT_CONFIG.apiKey,
+      difyServiceAPI: DEFAULT_CONFIG.difyServiceAPI,
+      difyApiKey: DEFAULT_CONFIG.difyApiKey,
     },
   });
 
   useEffect(() => {
     const loadFormData = async () => {
-      const result = await chrome.storage.local.get(['aiModel', 'apiKey']);
-      
+      const result = await chrome.storage.local.get(['aiModel', 'apiKey', 'difyServiceAPI', 'difyApiKey']);
+
       form.setValues({
         aiModel: result.aiModel || DEFAULT_CONFIG.aiModel,
         apiKey: result.apiKey || DEFAULT_CONFIG.apiKey,
+        difyServiceAPI: result.difyServiceAPI || DEFAULT_CONFIG.difyServiceAPI,
+        difyApiKey: result.difyApiKey || DEFAULT_CONFIG.difyApiKey,
       });
       form.resetDirty();
     };
-    
+
     loadFormData();
   }, []);
 
@@ -190,7 +207,9 @@ const App: React.FC = () => {
     console.log('Saving config:', values);
     await chrome.storage.local.set({
       aiModel: values.aiModel,
-      apiKey: values.apiKey
+      apiKey: values.apiKey,
+      difyServiceAPI: values.difyServiceAPI,
+      difyApiKey: values.difyApiKey,
     });
     form.resetDirty();
     showSuccessNotification(t('refreshToApply'));
@@ -294,6 +313,33 @@ const App: React.FC = () => {
                 />
 
               </div>
+              <div>
+                <Divider my="xs" label={t('difyConfig')} labelPosition="center" styles={{
+                  root: {
+                    marginBlock: 0,
+                    marginBottom: "0px"
+                  }
+                }} />
+                <Switch
+                  label={t('usingDify')}
+                  labelPosition="left"
+                  size="sm"
+                  styles={{
+                    body: { justifyContent: 'space-between' },
+                    trackLabel: { width: '100%' },
+                    label: { fontSize: '13px' }
+                  }}
+                  checked={usingDify}
+                  onChange={(event) => updateUsingDify(event.currentTarget.checked)}
+                />
+                <TextInput label={t('difyServiceAPI')} placeholder={t('difyServiceAPIPlaceholder')} {...form.getInputProps('difyServiceAPI')} size="xs" />
+                <PasswordInput
+                  label={t('difyApiKey')}
+                  placeholder={t('enterDifyApiKey')}
+                  {...form.getInputProps('difyApiKey')}
+                  size="xs"
+                />
+              </div>
               <Group justify="flex-end" mt="sm" gap="xs">
                 <Button type="submit" size="xs" disabled={!form.isDirty()}>
                   {t('save')}
@@ -305,8 +351,8 @@ const App: React.FC = () => {
       </Tabs.Panel>
 
       <Tabs.Panel value="instructions">
-        <div style={{ padding: '18px'}}>
-          <Text 
+        <div style={{ padding: '18px' }}>
+          <Text
             size="sm"
             fw={600}
           >
@@ -317,8 +363,8 @@ const App: React.FC = () => {
             <List.Item><a href="https://www.v2think.com/ad-killer" target="_blank">中文教程</a></List.Item>
           </List>
         </div>
-        <div style={{ padding: '18px'}}>
-          <Text 
+        <div style={{ padding: '18px' }}>
+          <Text
             size="sm"
             fw={600}
           >

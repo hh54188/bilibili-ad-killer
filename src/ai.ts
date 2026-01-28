@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { getVideoIdFromCurrentPage } from './util';
-import { showToast, messages} from './toast';
+import { showToast, messages } from './toast';
 
 
 export type AdTimeRange = {
@@ -13,8 +13,8 @@ export type AdTimeRange = {
 const responseSchema = {
     type: 'OBJECT',
     properties: {
-        startTime: {type: 'number', nullable: false},
-        endTime: {type: 'number', nullable: false},
+        startTime: { type: 'number', nullable: false },
+        endTime: { type: 'number', nullable: false },
     },
     required: ['startTime', 'endTime'],
 };
@@ -25,6 +25,8 @@ export interface IdentifyAdTimeRangeOptions {
     aiModel: string;
     videoTitle?: string,
     videoDescription?: string,
+    difyServiceAPI?: string;
+    difyApiKey?: string;
 }
 
 export async function identifyAdTimeRangeByBrowserAI(options: IdentifyAdTimeRangeOptions): Promise<AdTimeRange | undefined> {
@@ -57,8 +59,8 @@ export async function identifyAdTimeRangeByBrowserAI(options: IdentifyAdTimeRang
     ------
     视频描述如下：
     ${videoDescription}
-    ` 
-    const finalPrompt = `${basicPrompt}${videoTitle ? videoTitlePrompt : ""}${videoDescription? videoDescriptionPrompt : ""}`;
+    `
+    const finalPrompt = `${basicPrompt}${videoTitle ? videoTitlePrompt : ""}${videoDescription ? videoDescriptionPrompt : ""}`;
 
     try {
         const session = await window.LanguageModel.create({
@@ -98,7 +100,7 @@ export async function checkGeminiConnectivity(geminiClient: GoogleGenAI, aiModel
             contents: 'Hi'
         });
         return response.text
-    } catch(err) {
+    } catch (err) {
         console.log("📺 🤖 ❌ Failed to reach AI service, message:", err);
         showToast(messages.aiServiceFailed);
         throw err;
@@ -138,7 +140,7 @@ export async function identifyAdTimeRangeByGeminiAI(options: IdentifyAdTimeRange
     ------
     视频描述如下：
     ${videoDescription}
-    ` 
+    `
 
     try {
         const response = await geminiClient.models.generateContent({
@@ -150,7 +152,7 @@ export async function identifyAdTimeRangeByGeminiAI(options: IdentifyAdTimeRange
                     timeout: 1000 * 60,
                 }
             },
-            contents: `${basicPrompt}${videoTitle ? videoTitlePrompt : ""}${videoDescription? videoDescriptionPrompt : ""}`,
+            contents: `${basicPrompt}${videoTitle ? videoTitlePrompt : ""}${videoDescription ? videoDescriptionPrompt : ""}`,
         });
 
         console.log("📺 🤖 AI response text", response.text)
@@ -163,8 +165,76 @@ export async function identifyAdTimeRangeByGeminiAI(options: IdentifyAdTimeRange
             return null;
         }
 
-        if (targetAdTimeRange.startTime < 0 
-            || targetAdTimeRange.endTime < 0 
+        if (targetAdTimeRange.startTime < 0
+            || targetAdTimeRange.endTime < 0
+            || targetAdTimeRange.startTime >= targetAdTimeRange.endTime) {
+            console.log("📺 🤖 Invalid ad time range", targetAdTimeRange);
+            return null;
+        }
+
+        targetAdTimeRange.startTime = parseFloat(targetAdTimeRange.startTime)
+        targetAdTimeRange.endTime = parseFloat(targetAdTimeRange.endTime)
+
+        // Only call window-dependent functions if window is available (e.g., not in test environment)
+        if (typeof window !== 'undefined') {
+            const videoId = getVideoIdFromCurrentPage();
+            window.postMessage({
+                type: 'SAVE_VIDEO_AD_TIMERANGE',
+                data: {
+                    videoId,
+                    ...targetAdTimeRange,
+                }
+            })
+        }
+        return targetAdTimeRange;
+    } catch (err) {
+        console.log("📺 🤖 ❌ Failed to reach AI service, message:", err);
+        showToast(messages.aiServiceFailed);
+        return null;
+    }
+}
+
+
+export async function identifyAdTimeRangeByDify(options: Omit<IdentifyAdTimeRangeOptions, 'geminiClient' | 'aiModel'>): Promise<AdTimeRange | undefined> {
+    const { subStr, videoTitle, videoDescription, difyServiceAPI, difyApiKey } = options;
+
+    if (!difyServiceAPI || !difyApiKey) {
+        console.error('📺 🤖 ❌ Dify not initialized yet, cannot identify ads');
+        showToast(messages.difyNotInitialized);
+        return null;
+    }
+
+    try {
+        const response = await fetch(difyServiceAPI, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${difyApiKey}`,
+            },
+            body: JSON.stringify({
+                inputs: {
+                    subStr: subStr,
+                    videoTitle: videoTitle,
+                    videoDescription: videoDescription,
+                },
+                response_mode: 'blocking',
+                user: 'user_ad-marker',
+            }),
+        })
+        const result = await response.json();
+
+        console.log("📺 🤖 AI response text", response.json())
+
+        // The way of rule the response schema introduced by Google offical tutorial was not reliable,
+        // https://ai.google.dev/gemini-api/docs/structured-output?example=recipe
+        const targetAdTimeRange = result.data.outputs.structured_output
+        if (!targetAdTimeRange || !targetAdTimeRange.startTime || !targetAdTimeRange.endTime) {
+            console.log("📺 🤖 No ad found")
+            return null;
+        }
+
+        if (targetAdTimeRange.startTime < 0
+            || targetAdTimeRange.endTime < 0
             || targetAdTimeRange.startTime >= targetAdTimeRange.endTime) {
             console.log("📺 🤖 Invalid ad time range", targetAdTimeRange);
             return null;

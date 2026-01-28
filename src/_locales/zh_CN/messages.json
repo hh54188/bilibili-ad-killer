@@ -91,6 +91,9 @@
   "aiNotInitialized": {
     "message": "AI 未初始化，请在扩展设置中配置 API 密钥"
   },
+  "difyNotInitialized": {
+    "message": "Dify 未初始化，请在扩展设置中配置 workflow ID 和 API 密钥"
+  },
   "aiServiceFailed": {
     "message": "无法连接到 AI 服务，请检查网络连接"
   },
@@ -111,5 +114,20 @@
   },
   "sourceCode": {
     "message": "源代码"
+  },
+  "usingDify": {
+    "message": "使用 Dify"
+  },
+  "difyConfig": {
+    "message": "Dify 配置"
+  },
+  "difyServiceAPI": {
+    "message": "Dify 服务 API"
+  },
+  "difyServiceAPIPlaceholder": {
+    "message": "https://api.dify.ai/v1/workflows/{workflow_id}/run"
+  },
+  "difyApiKey": {
+    "message": "API 密钥"
   }
 }

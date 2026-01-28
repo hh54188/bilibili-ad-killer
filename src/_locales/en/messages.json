@@ -91,6 +91,9 @@
   "aiNotInitialized": {
     "message": "AI not initialized. Please configure API key in extension settings."
   },
+  "difyNotInitialized": {
+    "message": "Dify not initialized. Please configure workflow ID and API key in extension settings."
+  },
   "aiServiceFailed": {
     "message": "Failed to reach AI service. Please check your network connection."
   },
@@ -111,5 +114,20 @@
   },
   "sourceCode": {
     "message": "Source Code"
+  },
+  "usingDify": {
+    "message": "Using Dify"
+  },
+  "difyConfig": {
+    "message": "Dify Config"
+  },
+  "difyServiceAPI": {
+    "message": "Dify Service API"
+  },
+  "difyServiceAPIPlaceholder": {
+    "message": "https://api.dify.ai/v1/workflows/{workflow_id}/run"
+  },
+  "difyApiKey": {
+    "message": "API Key"
   }
 }
