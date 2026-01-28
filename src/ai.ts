@@ -223,7 +223,7 @@ export async function identifyAdTimeRangeByDify(options: Omit<IdentifyAdTimeRang
         })
         const result = await response.json();
 
-        console.log("📺 🤖 AI response text", response.json())
+        console.log("📺 🤖 AI response text", result)
 
         // The way of rule the response schema introduced by Google offical tutorial was not reliable,
         // https://ai.google.dev/gemini-api/docs/structured-output?example=recipe
