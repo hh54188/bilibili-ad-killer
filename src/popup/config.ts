@@ -3,7 +3,10 @@ export interface UserConfig {
     aiModel: string, 
     autoSkip: boolean,
     ignoreVideoLessThan5Minutes: boolean,
-    usingBrowserAIModel: boolean
+    usingBrowserAIModel: boolean,
+    usingDify: boolean,
+    difyServiceAPI: string,
+    difyApiKey: string,
 } 
 
 export const DEFAULT_CONFIG: UserConfig = {
@@ -11,6 +14,9 @@ export const DEFAULT_CONFIG: UserConfig = {
     aiModel: 'gemini-2.5-flash',
     autoSkip: true,
     ignoreVideoLessThan5Minutes: true,
-    usingBrowserAIModel: false
+    usingBrowserAIModel: false,
+    usingDify: false,
+    difyServiceAPI: '',
+    difyApiKey: '',
 }
 

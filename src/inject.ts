@@ -1,10 +1,10 @@
-import {GoogleGenAI} from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { initializeAdBar, addAnimation, removeAnimation, cleanupAll } from './bilibili-ui'
 import { convertSubtitleObjToStr, subtitle, getVideoIdFromCurrentPage } from './util';
 import { thinkingAnimationClass, warningAnimationClass } from './style';
 import { showToast, initToastMessages, messages, notifyDelayedMessages } from './toast'
-import { identifyAdTimeRangeByGeminiAI, AdTimeRange, checkGeminiConnectivity } from './ai';
-import {initializeConfig, UserConfig} from './config'
+import { identifyAdTimeRangeByGeminiAI, AdTimeRange, checkGeminiConnectivity, identifyAdTimeRangeByDify } from './ai';
+import { initializeConfig, UserConfig } from './config'
 
 interface AdTimeRangeCache {
   [videoId: string]: AdTimeRange | null;
@@ -27,7 +27,7 @@ window.addEventListener('message', (event) => {
 
   if (event.data.type === 'TOASTIFY_LOADED') {
     console.log('📺 ✔️ Toastify loaded successfully, waiting for document.body');
-    
+
     const notifyWhenBodyReady = () => {
       if (document.body) {
         console.log('📺 ✔️ document.body is ready, notifying delayed messages');
@@ -37,7 +37,7 @@ window.addEventListener('message', (event) => {
         requestAnimationFrame(notifyWhenBodyReady);
       }
     };
-    
+
     notifyWhenBodyReady();
     return;
   }
@@ -49,32 +49,42 @@ window.addEventListener('message', (event) => {
       return;
     }
   }
-  
+
   if (event.data.type === 'BILIBILI_AD_SKIP_CONFIG') {
     console.log('📺 ⚙️ 💬 Received message:', event.data);
     const receivedConfig = event.data.config;
     config = receivedConfig;
     initializeConfig(config!)
-    
+
     if (event.data.i18n) {
       initToastMessages(event.data.i18n)
     }
-    
-    console.log('📺 ⚙️ ✔️ Config received via postMessage:', { 
+
+    console.log('📺 ⚙️ ✔️ Config received via postMessage:', {
       apiKey: receivedConfig.apiKey,
       aiModel: receivedConfig.aiModel,
       autoSkip: receivedConfig.autoSkip,
       ignoreVideoLessThan5Minutes: receivedConfig.ignoreVideoLessThan5Minutes,
-      usingBrowserAIModel: receivedConfig.usingBrowserAIModel
+      usingBrowserAIModel: receivedConfig.usingBrowserAIModel,
+      usingDify: receivedConfig.usingDify,
+      difyServiceAPI: receivedConfig.difyServiceAPI,
+      difyApiKey: receivedConfig.difyApiKey,
     });
-
-
-    if (receivedConfig.apiKey) {
-      geminiClient = new GoogleGenAI({ apiKey: receivedConfig.apiKey });
-      console.log('📺 🤖 ✔️ AI initialized');
+    if (!config?.usingDify) {
+      if (receivedConfig.apiKey) {
+        geminiClient = new GoogleGenAI({ apiKey: receivedConfig.apiKey });
+        console.log('📺 🤖 ✔️ AI initialized');
+      } else {
+        console.log('📺 🤖 ❌ No API key provided');
+        showToast(messages.noApiKeyProvided);
+      }
     } else {
-      console.log('📺 🤖 ❌ No API key provided');
-      showToast(messages.noApiKeyProvided);
+      if (!(receivedConfig.difyServiceAPI && receivedConfig.difyApiKey)) {
+        console.log('📺 🤖 ❌ No Dify service API or API key provided');
+        showToast(messages.difyNotInitialized);
+      }else{
+        console.log('📺 🤖 ✔️ Dify initialized');
+      }
     }
   }
 });
@@ -95,7 +105,7 @@ async function processVideoSubtitles(response: any, videoId: string): Promise<vo
     }, 1000 * 3);
     return;
   }
-  
+
   const subtitles = response.data.subtitle.subtitles;
   console.log('📺 Found subtitles array:', subtitles);
 
@@ -109,8 +119,8 @@ async function processVideoSubtitles(response: any, videoId: string): Promise<vo
     return;
   }
 
-  const fullUrl = targetSubtitle.subtitle_url.startsWith('//') 
-    ? 'https:' + targetSubtitle.subtitle_url 
+  const fullUrl = targetSubtitle.subtitle_url.startsWith('//')
+    ? 'https:' + targetSubtitle.subtitle_url
     : targetSubtitle.subtitle_url;
 
   console.log(`📺 ✔️ Language: ${targetSubtitle.lan_doc} (${targetSubtitle.lan})`);
@@ -119,16 +129,8 @@ async function processVideoSubtitles(response: any, videoId: string): Promise<vo
   console.log(`📺 ✔️ Full subtitle object:`, targetSubtitle);
 
   const jsonRes = await (await fetch(fullUrl)).json();
-  const subtitlesRes:subtitle[] = jsonRes.body;
+  const subtitlesRes: subtitle[] = jsonRes.body;
   const subtitleStr = convertSubtitleObjToStr(subtitlesRes);
-
-  if (!geminiClient || !config?.aiModel) {
-    console.error('📺 🤖 ❌ Unable continue to identify ad due to lack uninitialized Gemini client');
-    return 
-  }
-
-  const connectivity = await  checkGeminiConnectivity(geminiClient, config.aiModel);
-  console.log("📺 🤖 Check Gemini connectivity", connectivity)
 
   let adTimeRange: AdTimeRange | undefined = null;
 
@@ -146,49 +148,68 @@ async function processVideoSubtitles(response: any, videoId: string): Promise<vo
     const videoDescription = window.__INITIAL_STATE__.videoData.desc
     try {
       addAnimation(thinkingAnimationClass);
-      adTimeRange = await identifyAdTimeRangeByGeminiAI({
-        geminiClient: geminiClient,
-        subStr: subtitleStr,
-        aiModel: config.aiModel,
-        videoTitle,
-        videoDescription
-      });
+      // if dify is enabled, use dify to identify ad time range
+      if (config?.usingDify) {
+        console.info('📺 🤖 Using Dify to identify ad time range');
+        adTimeRange = await identifyAdTimeRangeByDify({
+          difyServiceAPI: config.difyServiceAPI,
+          difyApiKey: config.difyApiKey,
+          subStr: subtitleStr,
+          videoTitle,
+          videoDescription,
+        });
+      } else {
+        if (!geminiClient || !config?.aiModel) {
+          console.error('📺 🤖 ❌ Unable continue to identify ad due to lack uninitialized Gemini client');
+          return
+        }
+      
+        const connectivity = await checkGeminiConnectivity(geminiClient, config.aiModel);
+        console.log("📺 🤖 Check Gemini connectivity", connectivity);
+        adTimeRange = await identifyAdTimeRangeByGeminiAI({
+          geminiClient: geminiClient,
+          subStr: subtitleStr,
+          aiModel: config.aiModel,
+          videoTitle,
+          videoDescription
+        });
+      }
       removeAnimation();
     } catch (error) {
       console.error('📺 🤖 ❌ Error identifying ad time range:', error);
       removeAnimation();
     }
   }
-  
+
   if (!adTimeRange) {
     console.log('📺 ✔️ No ads detected in this video');
     return;
   }
-  
+
   console.log('📺 ✔️ Ad detected:', adTimeRange);
   initializeAdBar(adTimeRange.startTime, adTimeRange.endTime);
 }
 
-(function() {
+(function () {
 
   const originalOpen = XMLHttpRequest.prototype.open;
   const originalSend = XMLHttpRequest.prototype.send;
 
-  XMLHttpRequest.prototype.open = function(method: string, url: string | URL, ...args: any[]) {
+  XMLHttpRequest.prototype.open = function (method: string, url: string | URL, ...args: any[]) {
     // @ts-ignore
     this._url = url.toString();
     // @ts-ignore
     return originalOpen.call(this, method, url, ...args);
   };
 
-  XMLHttpRequest.prototype.send = function(...args: any[]) {
+  XMLHttpRequest.prototype.send = function (...args: any[]) {
     // @ts-ignore
     const url = this._url;
 
     if (window.location.pathname.startsWith('/video/') && url && url.includes('api.bilibili.com/x/player/wbi/v2')) {
       console.log('📺 ✔️ Detected player API request');
 
-      this.addEventListener('load', async function() {
+      this.addEventListener('load', async function () {
         try {
           if (this.status !== 200) {
             console.error("📺 ❌ Failed to fetch the api.bilibili.com/x/player/wbi/v2 API", this.status, this.responseText);
@@ -213,12 +234,12 @@ async function processVideoSubtitles(response: any, videoId: string): Promise<vo
               return;
             }
           }
-          
+
           if (!videoId) {
             console.error('📺 ❌ No video ID found');
             return;
           }
-          
+
           await processVideoSubtitles(response, videoId);
         } catch (error) {
           console.error('📺 ❌ Error parsing response:', error);
@@ -240,23 +261,23 @@ function monitorUrlChanges() {
     }
 
     const urlVideoId = getVideoIdFromCurrentPage();
-    
+
     if (!urlVideoId || urlVideoId === currentVideoId) {
       return;
     }
-    
+
     console.log('📺 🔄 URL changed:', currentVideoId, '→', urlVideoId);
-    
+
     cleanupAll();
     currentVideoId = urlVideoId;
-    
+
     if (webResponseCache[urlVideoId]) {
       console.log('📺 ⚡ Processing from cache:', urlVideoId);
       await processVideoSubtitles(webResponseCache[urlVideoId], urlVideoId);
     } else {
       console.log('📺 ⏭️ Cache miss for:', urlVideoId, '- cleaned up only');
     }
-    
+
   }, 300);
 }
 
