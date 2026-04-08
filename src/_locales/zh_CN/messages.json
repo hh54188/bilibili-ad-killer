@@ -40,14 +40,53 @@
   "aiModel": {
     "message": "AI 模型"
   },
+  "aiProvider": {
+    "message": "AI 提供商"
+  },
+  "selectAiProvider": {
+    "message": "选择 AI 提供商"
+  },
   "selectAiModel": {
     "message": "选择 AI 模型"
   },
   "apiKey": {
     "message": "API 密钥"
   },
+  "apiBaseUrl": {
+    "message": "API 基础地址"
+  },
   "enterApiKey": {
     "message": "请输入您的 API 密钥"
+  },
+  "enterGeminiApiBaseUrl": {
+    "message": "请输入 Gemini 兼容基础地址"
+  },
+  "enterOpenAiApiBaseUrl": {
+    "message": "请输入 OpenAI 基础地址"
+  },
+  "enterApiBaseUrl": {
+    "message": "请输入 Gemini 兼容基础地址"
+  },
+  "emptyGeminiApiBaseUrlHint": {
+    "message": "留空则使用官方 Gemini 地址"
+  },
+  "emptyOpenAiApiBaseUrlHint": {
+    "message": "留空则使用官方 OpenAI 地址"
+  },
+  "openAiApiBaseUrlHint": {
+    "message": "这里填写 OpenAI Responses API 的基础地址，留空则使用官方地址。支持 http:// 和 https://，例如 https://api.openai.com/v1 或 https://your-proxy.example.com/v1；不要填写完整 /responses 接口地址。"
+  },
+  "emptyApiBaseUrlHint": {
+    "message": "留空则使用官方 Gemini 地址"
+  },
+  "invalidApiBaseUrl": {
+    "message": "地址格式错误，请输入以 http:// 或 https:// 开头的地址"
+  },
+  "openAiEndpointPathNotSupported": {
+    "message": "这里只能填写 OpenAI 基础地址，不能填写完整接口地址，例如 /responses 或 /chat/completions"
+  },
+  "httpsPageCannotUseHttpApiBaseUrl": {
+    "message": "B站页面是 HTTPS，不能直连 HTTP 的 AI 地址。请改用 HTTPS 地址，或通过支持 HTTPS 的反向代理转发到该接口。"
   },
   "cancel": {
     "message": "取消"
@@ -60,6 +99,9 @@
   },
   "gemini": {
     "message": "Gemini"
+  },
+  "openai": {
+    "message": "GPT / OpenAI"
   },
   "deepseekChat": {
     "message": "DeepSeek Chat"
@@ -96,6 +138,27 @@
   },
   "aiServiceFailed": {
     "message": "无法连接到 AI 服务，请检查网络连接"
+  },
+  "aiServiceAuthFailed": {
+    "message": "AI 服务返回 401 未授权。请检查弹窗中的 API 密钥是否就是 CPA 代理令牌，并确认服务端接受 Authorization: Bearer。"
+  },
+  "aiServiceForbidden": {
+    "message": "AI 服务返回 403 禁止访问。请检查服务端权限、来源限制和模型访问策略。"
+  },
+  "aiServiceServerError": {
+    "message": "AI 服务返回 5xx 服务器错误。请先检查 CPA 或上游模型服务日志。"
+  },
+  "aiServiceTlsFailed": {
+    "message": "HTTPS 连接失败。请检查证书是否被当前浏览器信任，以及访问域名是否与证书 SAN 完全一致。"
+  },
+  "aiServiceCorsFailed": {
+    "message": "浏览器拦截了跨域请求。请检查 CPA 是否允许来自 https://www.bilibili.com 的 CORS 访问，并放行 Authorization 头。"
+  },
+  "aiServiceTimeout": {
+    "message": "连接 AI 服务超时，请检查 CPA 地址、网络连通性和服务端处理耗时。"
+  },
+  "aiServiceNetworkFailed": {
+    "message": "无法建立到 AI 服务的网络连接。若使用 HTTPS 自签证书，请优先检查证书信任链和浏览器控制台。"
   },
   "checkBrowserModelDownloadProgress": {
     "message": "查看浏览器模型下载进度"

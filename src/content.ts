@@ -1,28 +1,63 @@
-const DEFAULT_CONFIG = {
-  apiKey: '',
-  aiModel: 'gemini-2.5-flash',
-  autoSkip: true,
-  ignoreVideoLessThan5Minutes: true,
-  ignoreVideoMoreThan30Minutes: false,
-  usingBrowserAIModel: false
-}
+import { GoogleGenAI } from '@google/genai';
+import { getAIServiceToastMessage } from './ai-service-error';
+import {
+  identifyAdTimeRangeByAIWithDiagnostics,
+  identifyAdTimeRangeByBrowserAI,
+  type AdTimeRange,
+  type OpenAIClient,
+} from './ai';
+import {
+  DEFAULT_CONFIG,
+  getEffectiveApiBaseUrl,
+  isMixedContentApiBaseUrl,
+  isOpenAIFullEndpointUrl,
+  isValidApiBaseUrl,
+  normalizeUserConfig,
+  type UserConfig,
+} from './config';
 
-console.log('📺 ✔️ Content script loaded');
 const AD_TIME_RANGE_CACHE = 'AD_TIME_RANGE_CACHE';
 
-// Inject Toastify CSS first
+interface AdTimeRangeCacheEntry {
+  startTime: number;
+  endTime: number;
+  createAt: number;
+}
+
+interface IdentifyRequestMessageData {
+  requestId: string;
+  videoId: string;
+  subtitleStr: string;
+  videoTitle?: string;
+  videoDescription?: string;
+}
+
+interface SafePageConfig {
+  autoSkip: boolean;
+  ignoreVideoLessThan5Minutes: boolean;
+  ignoreVideoMoreThan30Minutes: boolean;
+  usingBrowserAIModel: boolean;
+}
+
+let userConfig: UserConfig = DEFAULT_CONFIG;
+let resolveConfigLoaded: (() => void) | null = null;
+const configLoadedPromise = new Promise<void>((resolve) => {
+  resolveConfigLoaded = resolve;
+});
+
+console.log('📺 ✔️ Content script loaded');
+
 const cssLink = document.createElement('link');
 cssLink.rel = 'stylesheet';
 cssLink.href = chrome.runtime.getURL('lib/toastify.min.css');
 (document.head || document.documentElement).appendChild(cssLink);
 
-// Inject inject script, then Toastify JS
 const injectScript = document.createElement('script');
 injectScript.src = chrome.runtime.getURL('inject.js');
 injectScript.onload = () => {
   console.log('📺 ✔️ Inject script loaded successfully');
   injectScript.remove();
-  // Now inject Toastify
+
   const toastifyScript = document.createElement('script');
   toastifyScript.src = chrome.runtime.getURL('lib/toastify.min.js');
   toastifyScript.onload = function() {
@@ -33,110 +68,256 @@ injectScript.onload = () => {
 };
 (document.head || document.documentElement).appendChild(injectScript);
 
-(async () => {
-  const result = await chrome.storage.local.get(['apiKey', 'aiModel', 'autoSkip', 'ignoreVideoLessThan5Minutes', 'ignoreVideoMoreThan30Minutes', 'usingBrowserAIModel']);
-  const apiKey = result.apiKey || DEFAULT_CONFIG.apiKey;
-  const aiModel = result.aiModel || DEFAULT_CONFIG.aiModel;
-  const autoSkip = typeof result.autoSkip !== undefined 
-    ? result.autoSkip 
-    : DEFAULT_CONFIG.autoSkip;
-  const usingBrowserAIModel = typeof result.usingBrowserAIModel !== undefined 
-    ? result.usingBrowserAIModel 
-    : DEFAULT_CONFIG.usingBrowserAIModel;
-  const ignoreVideoLessThan5Minutes = typeof result.ignoreVideoLessThan5Minutes !== undefined 
-    ? result.ignoreVideoLessThan5Minutes 
-    : DEFAULT_CONFIG.ignoreVideoLessThan5Minutes;
-  const ignoreVideoMoreThan30Minutes = typeof result.ignoreVideoMoreThan30Minutes !== undefined 
-    ? result.ignoreVideoMoreThan30Minutes 
-    : DEFAULT_CONFIG.ignoreVideoMoreThan30Minutes;
-
-  console.log('📺 ✔️ Content script - Config retrieved:', { apiKey, aiModel, autoSkip, usingBrowserAIModel, ignoreVideoLessThan5Minutes, ignoreVideoMoreThan30Minutes });
-
-  const sendConfig = () => {
-    console.log('📺 ✔️ Sending config via postMessage');
-    window.postMessage({
-      type: 'BILIBILI_AD_SKIP_CONFIG',
-      config: {
-        apiKey,
-        aiModel,
-        autoSkip,
-        ignoreVideoLessThan5Minutes,
-        ignoreVideoMoreThan30Minutes,
-        usingBrowserAIModel
-      },
-      i18n: {
-        noApiKeyProvided: chrome.i18n.getMessage('noApiKeyProvided'),
-        aiNotInitialized: chrome.i18n.getMessage('aiNotInitialized'),
-        aiServiceFailed: chrome.i18n.getMessage('aiServiceFailed'),
-        notLoginYet: chrome.i18n.getMessage('notLoginYet')
-      }
-    }, '*');
+function buildI18nMessages() {
+  return {
+    noApiKeyProvided: chrome.i18n.getMessage('noApiKeyProvided'),
+    aiNotInitialized: chrome.i18n.getMessage('aiNotInitialized'),
+    aiServiceFailed: chrome.i18n.getMessage('aiServiceFailed'),
+    aiServiceAuthFailed: chrome.i18n.getMessage('aiServiceAuthFailed'),
+    aiServiceForbidden: chrome.i18n.getMessage('aiServiceForbidden'),
+    aiServiceServerError: chrome.i18n.getMessage('aiServiceServerError'),
+    aiServiceTlsFailed: chrome.i18n.getMessage('aiServiceTlsFailed'),
+    aiServiceCorsFailed: chrome.i18n.getMessage('aiServiceCorsFailed'),
+    aiServiceTimeout: chrome.i18n.getMessage('aiServiceTimeout'),
+    aiServiceNetworkFailed: chrome.i18n.getMessage('aiServiceNetworkFailed'),
+    notLoginYet: chrome.i18n.getMessage('notLoginYet'),
+    invalidApiBaseUrl: chrome.i18n.getMessage('invalidApiBaseUrl'),
+    openAiEndpointPathNotSupported: chrome.i18n.getMessage('openAiEndpointPathNotSupported'),
+    httpsPageCannotUseHttpApiBaseUrl: chrome.i18n.getMessage('httpsPageCannotUseHttpApiBaseUrl')
   };
+}
 
-  const sendAdTimeRangeCache = async () => {
-    const adTimeRangeCache = (await chrome.storage.local.get(AD_TIME_RANGE_CACHE))[AD_TIME_RANGE_CACHE]
-    window.postMessage({
-      type: 'SEND_VIDEO_AD_TIMERANGE',
-      data: adTimeRangeCache 
-    }, '*');
+function buildSafePageConfig(config: UserConfig): SafePageConfig {
+  return {
+    autoSkip: config.autoSkip,
+    ignoreVideoLessThan5Minutes: config.ignoreVideoLessThan5Minutes,
+    ignoreVideoMoreThan30Minutes: config.ignoreVideoMoreThan30Minutes,
+    usingBrowserAIModel: config.usingBrowserAIModel,
+  };
+}
+
+function sendConfigToPage() {
+  window.postMessage({
+    type: 'BILIBILI_AD_SKIP_CONFIG',
+    config: buildSafePageConfig(userConfig),
+    i18n: buildI18nMessages(),
+  }, '*');
+}
+
+function sendToastToPage(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'error') {
+  if (!message) {
+    return;
   }
 
-  const cleanOldCache = async () => {
-    const adTimeRangeCache = (await chrome.storage.local.get(AD_TIME_RANGE_CACHE))[AD_TIME_RANGE_CACHE] || {};
-    const threeDaysAgo = +new Date() - (3 * 24 * 60 * 60 * 1000); // 3 days in milliseconds
-    
-    const cleanedCache = Object.entries(adTimeRangeCache).reduce((acc, [videoId, cacheEntry]: [string, any]) => {
-      // Keep entries that were created less than 3 days ago
-      if (cacheEntry.createAt && cacheEntry.createAt > threeDaysAgo) {
-        acc[videoId] = cacheEntry;
+  window.postMessage({
+    type: 'BILIBILI_AD_SKIP_TOAST',
+    data: {
+      message,
+      type,
+    }
+  }, '*');
+}
+
+function sendIdentifyResultToPage(requestId: string, videoId: string, adTimeRange: AdTimeRange) {
+  window.postMessage({
+    type: 'BILIBILI_AD_IDENTIFY_RESULT',
+    data: {
+      requestId,
+      videoId,
+      adTimeRange,
+    }
+  }, '*');
+}
+
+async function cleanOldCache() {
+  const adTimeRangeCache = (await chrome.storage.local.get(AD_TIME_RANGE_CACHE))[AD_TIME_RANGE_CACHE] || {};
+  const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000);
+
+  const cleanedCache = Object.entries(adTimeRangeCache).reduce((acc, [videoId, cacheEntry]: [string, any]) => {
+    if (cacheEntry.createAt && cacheEntry.createAt > threeDaysAgo) {
+      acc[videoId] = cacheEntry;
+    }
+    return acc;
+  }, {} as Record<string, AdTimeRangeCacheEntry>);
+
+  await chrome.storage.local.set({
+    [AD_TIME_RANGE_CACHE]: cleanedCache
+  });
+}
+
+async function saveAdTimeRange(videoId: string, adTimeRange: Exclude<AdTimeRange, null>) {
+  const adTimeRangeCache = (await chrome.storage.local.get(AD_TIME_RANGE_CACHE))[AD_TIME_RANGE_CACHE] || {};
+
+  await chrome.storage.local.set({
+    [AD_TIME_RANGE_CACHE]: {
+      ...adTimeRangeCache,
+      [videoId]: {
+        startTime: adTimeRange.startTime,
+        endTime: adTimeRange.endTime,
+        createAt: Date.now(),
       }
-      return acc;
-    }, {} as Record<string, any>);
-
-    await chrome.storage.local.set({
-      [AD_TIME_RANGE_CACHE]: cleanedCache
-    });
-
-    const removedCount = Object.keys(adTimeRangeCache).length - Object.keys(cleanedCache).length;
-    if (removedCount > 0) {
-      console.log(`📺 ✔️ Cleaned ${removedCount} old cache entries (older than 3 days)`);
-    }
-  }
-
-  window.addEventListener('message', async (event) => {
-    if (event.source === window && event.data.type === 'BILIBILI_AD_SKIP_READY') {
-      console.log('📺 💬 Received raw BILIBILI_AD_SKIP_READY event', event)
-      console.log('📺 ✔️ Inject script ready, sending config');
-      sendConfig();
-    }
-
-    if (event.source === window && event.data.type === "REQUEST_VIDEO_AD_TIMERANGE") {
-      console.log('📺 💬 Received raw REQUEST_VIDEO_AD_TIMERANGE event', event)
-      console.log('📺 ✔️ Received request for AD time range cache');
-      await sendAdTimeRangeCache()
-    }
-
-    if (event.source === window && event.data.type === 'SAVE_VIDEO_AD_TIMERANGE') {
-      console.log('📺 💬 Received raw SAVE_VIDEO_AD_TIMERANGE event', event)
-      const adTimeRangeCache = (await chrome.storage.local.get(AD_TIME_RANGE_CACHE))[AD_TIME_RANGE_CACHE] || {};
-      const eventData = event.data.data;
-      if (!eventData.videoId || !eventData.startTime || !eventData.endTime) {
-        console.log('📺 ❌ No ad time range received')
-      }
-
-      await chrome.storage.local.set({
-        [AD_TIME_RANGE_CACHE]: {
-          ...adTimeRangeCache,
-          [eventData.videoId]: {
-            startTime: eventData.startTime,
-            endTime: eventData.endTime,
-            createAt: +new Date()
-          }
-        }
-      })
-
-      await cleanOldCache()
     }
   });
-})();
 
+  await cleanOldCache();
+}
+
+async function getCachedAdTimeRange(videoId: string): Promise<AdTimeRange | undefined> {
+  const adTimeRangeCache = (await chrome.storage.local.get(AD_TIME_RANGE_CACHE))[AD_TIME_RANGE_CACHE] || {};
+  const cacheEntry = adTimeRangeCache[videoId] as AdTimeRangeCacheEntry | undefined;
+  if (!cacheEntry) {
+    return undefined;
+  }
+
+  return {
+    startTime: cacheEntry.startTime,
+    endTime: cacheEntry.endTime,
+  };
+}
+
+function getOpenAIClient(config: UserConfig): OpenAIClient | null {
+  const effectiveApiBaseUrl = getEffectiveApiBaseUrl(config.aiProvider, config.apiBaseUrl);
+  if (!isValidApiBaseUrl(effectiveApiBaseUrl, 'openai')) {
+    sendToastToPage(
+      isOpenAIFullEndpointUrl(effectiveApiBaseUrl)
+        ? chrome.i18n.getMessage('openAiEndpointPathNotSupported')
+        : chrome.i18n.getMessage('invalidApiBaseUrl')
+    );
+    return null;
+  }
+
+  if (isMixedContentApiBaseUrl(effectiveApiBaseUrl, window.location.protocol)) {
+    sendToastToPage(chrome.i18n.getMessage('httpsPageCannotUseHttpApiBaseUrl'));
+    return null;
+  }
+
+  return {
+    apiKey: config.apiKey,
+    apiBaseUrl: effectiveApiBaseUrl,
+  };
+}
+
+async function identifyAdTimeRange(data: IdentifyRequestMessageData): Promise<AdTimeRange> {
+  if (!data.videoId || !data.subtitleStr) {
+    return null;
+  }
+
+  const cachedAdTimeRange = await getCachedAdTimeRange(data.videoId);
+  if (cachedAdTimeRange) {
+    console.log('📺 📦 ✔️ Content script cache hit:', data.videoId, cachedAdTimeRange);
+    return cachedAdTimeRange;
+  }
+
+  if (userConfig.usingBrowserAIModel) {
+    return await identifyAdTimeRangeByBrowserAI({
+      subStr: data.subtitleStr,
+      aiModel: userConfig.aiModel,
+      videoTitle: data.videoTitle,
+      videoDescription: data.videoDescription,
+    }) || null;
+  }
+
+  if (!userConfig.apiKey) {
+    sendToastToPage(chrome.i18n.getMessage('noApiKeyProvided'));
+    return null;
+  }
+
+  if (userConfig.aiProvider === 'openai') {
+    const openAIClient = getOpenAIClient(userConfig);
+    if (!openAIClient) {
+      return null;
+    }
+
+    const result = await identifyAdTimeRangeByAIWithDiagnostics({
+      provider: 'openai',
+      openAIClient,
+      subStr: data.subtitleStr,
+      aiModel: userConfig.aiModel,
+      videoTitle: data.videoTitle,
+      videoDescription: data.videoDescription,
+    });
+
+    if (result.error && result.error !== 'not_initialized') {
+      sendToastToPage(getAIServiceToastMessage(result.error, buildI18nMessages()));
+    } else if (result.error === 'not_initialized') {
+      sendToastToPage(chrome.i18n.getMessage('aiNotInitialized'));
+    }
+
+    return result.adTimeRange;
+  }
+
+  const geminiClient = userConfig.apiBaseUrl
+    ? new GoogleGenAI({
+        apiKey: userConfig.apiKey,
+        httpOptions: {
+          baseUrl: userConfig.apiBaseUrl,
+        },
+      })
+    : new GoogleGenAI({ apiKey: userConfig.apiKey });
+
+  const result = await identifyAdTimeRangeByAIWithDiagnostics({
+    provider: 'gemini',
+    geminiClient,
+    subStr: data.subtitleStr,
+    aiModel: userConfig.aiModel,
+    videoTitle: data.videoTitle,
+    videoDescription: data.videoDescription,
+  });
+
+  if (result.error && result.error !== 'not_initialized') {
+    sendToastToPage(getAIServiceToastMessage(result.error, buildI18nMessages()));
+  } else if (result.error === 'not_initialized') {
+    sendToastToPage(chrome.i18n.getMessage('aiNotInitialized'));
+  }
+
+  return result.adTimeRange;
+}
+
+async function handleIdentifyRequest(data: IdentifyRequestMessageData) {
+  const adTimeRange = await identifyAdTimeRange(data);
+
+  if (adTimeRange) {
+    await saveAdTimeRange(data.videoId, adTimeRange);
+  }
+
+  sendIdentifyResultToPage(data.requestId, data.videoId, adTimeRange);
+}
+
+window.addEventListener('message', async (event) => {
+  if (event.source !== window) {
+    return;
+  }
+
+  if (event.data.type === 'BILIBILI_AD_SKIP_READY') {
+    await configLoadedPromise;
+    sendConfigToPage();
+    return;
+  }
+
+  if (event.data.type === 'BILIBILI_AD_IDENTIFY_REQUEST') {
+    await configLoadedPromise;
+    await handleIdentifyRequest(event.data.data as IdentifyRequestMessageData);
+  }
+});
+
+(async () => {
+  const result = await chrome.storage.local.get(Object.keys(DEFAULT_CONFIG));
+  userConfig = normalizeUserConfig(result);
+
+  console.log('📺 ✔️ Content script - Config retrieved:', {
+    aiProvider: userConfig.aiProvider,
+    hasApiKey: Boolean(userConfig.apiKey),
+    apiBaseUrl: userConfig.apiBaseUrl,
+    aiModel: userConfig.aiModel,
+    autoSkip: userConfig.autoSkip,
+    ignoreVideoLessThan5Minutes: userConfig.ignoreVideoLessThan5Minutes,
+    ignoreVideoMoreThan30Minutes: userConfig.ignoreVideoMoreThan30Minutes,
+    usingBrowserAIModel: userConfig.usingBrowserAIModel,
+  });
+
+  await cleanOldCache();
+  if (resolveConfigLoaded !== null) {
+    (resolveConfigLoaded as () => void)();
+  }
+  resolveConfigLoaded = null;
+})();

@@ -1,10 +1,15 @@
 import { skipAnimationClass, aboutToSkipAdStyle, initializeAdBarStyle, thinkingStyle, warningStyle } from './style';
-import {config} from './config'
 
 export const progressWrapClassSelector ='.bpx-player-progress-schedule';
 export const skipAdBarClass = "bilibili-ad-bar"
 export const playerContainerSelector = '.bpx-player-container';
 export const playWrapId = 'bilibili-player';
+
+let autoSkipEnabled = true;
+
+export function updateUiConfig(config: { autoSkip: boolean }): void {
+    autoSkipEnabled = config.autoSkip;
+}
 
 // Cleanup tracking system
 let resizeObservers: ResizeObserver[] = [];
@@ -296,7 +301,7 @@ export function removeAnimation(): void {
 }
 
 function setupAutoSkip(video: HTMLVideoElement, adStartSeconds: number, adEndSeconds: number): void {
-    const autoSkip = config.autoSkip;
+    const autoSkip = autoSkipEnabled;
 
     let hasSkipped = false;
     let animationAdded = false;

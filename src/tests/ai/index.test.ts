@@ -33,6 +33,10 @@ describe('AI Ad Time Range Identification', async () => {
 
 
             expect(timeRange).not.toBeNull();
+            expect(timeRange).toBeDefined();
+            if (!timeRange) {
+                throw new Error(`Expected ad time range for ${fileName}`);
+            }
             expect(timeRange).toHaveProperty('startTime')
             expect(timeRange).toHaveProperty('endTime')
             expect(typeof timeRange.startTime).toBe('number')
@@ -45,7 +49,6 @@ describe('AI Ad Time Range Identification', async () => {
         }, 120000)
     }
 })
-
 
 
 

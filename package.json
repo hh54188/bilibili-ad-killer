@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "Chrome extension to skip ads in Bilibili videos automatically by AI",
   "scripts": {
-    "dev": "vite build --watch --mode development",
-    "build": "vite build",
+    "dev": "node scripts/build.mjs --watch --mode development",
+    "build": "node scripts/build.mjs",
     "clean": "rimraf dist",
     "test:ai": "vitest run src/tests/ai/index.test.ts",
     "test:ai:watch": "vitest watch src/tests/ai/index.ts",

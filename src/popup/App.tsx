@@ -1,17 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { Switch, Select, PasswordInput, Button, Stack, Group, Divider, Progress, Text, List } from '@mantine/core';
-import { Typography } from '@mantine/core';
-import { Tabs } from '@mantine/core';
+import { Switch, PasswordInput, Button, Stack, Group, Divider, Text, List, Tabs, Autocomplete, TextInput, Select } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { Alert } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useI18n } from '../hooks/useI18n';
-import { DEFAULT_CONFIG } from './config';
+import {
+  AIProvider,
+  DEFAULT_CONFIG,
+  getDefaultAiModelForProvider,
+  getModelOptionsByProvider,
+  isMixedContentApiBaseUrl,
+  isOpenAIFullEndpointUrl,
+  isValidApiBaseUrl,
+  normalizeApiBaseUrl,
+  normalizeUserConfig
+} from '../config';
 import './App.css';
 
 interface ConfigForm {
+  aiProvider: AIProvider;
   aiModel: string;
   apiKey: string;
+  apiBaseUrl: string;
 }
 
 const App: React.FC = () => {
@@ -25,6 +34,7 @@ const App: React.FC = () => {
   const [browserModelInDownloading, setBrowserModelInDownloading] = useState<boolean>(false);
   const [browserModelAvailable, setBrowserModelAvailable] = useState<boolean>(false);
   const [usingBrowserAIModel, setUsingBrowserAIModel] = useState<boolean>(DEFAULT_CONFIG.usingBrowserAIModel);
+  const [aiProvider, setAiProvider] = useState<AIProvider>(DEFAULT_CONFIG.aiProvider);
 
   async function checkLocalModelAvailability(): Promise<boolean> {
     if (!window.LanguageModel) {
@@ -180,18 +190,41 @@ const App: React.FC = () => {
   const form = useForm<ConfigForm>({
     mode: 'uncontrolled',
     initialValues: {
+      aiProvider: DEFAULT_CONFIG.aiProvider,
       aiModel: DEFAULT_CONFIG.aiModel,
       apiKey: DEFAULT_CONFIG.apiKey,
+      apiBaseUrl: DEFAULT_CONFIG.apiBaseUrl,
     },
+    validate: {
+      apiBaseUrl: (value) => {
+        const currentProvider = form.getValues().aiProvider;
+        if (!isValidApiBaseUrl(value, currentProvider)) {
+          if (currentProvider === 'openai' && isOpenAIFullEndpointUrl(value)) {
+            return t('openAiEndpointPathNotSupported');
+          }
+          return t('invalidApiBaseUrl');
+        }
+
+        if (currentProvider === 'openai' && isMixedContentApiBaseUrl(value, 'https:')) {
+          return t('httpsPageCannotUseHttpApiBaseUrl');
+        }
+
+        return null;
+      },
+    }
   });
 
   useEffect(() => {
     const loadFormData = async () => {
-      const result = await chrome.storage.local.get(['aiModel', 'apiKey']);
+      const result = await chrome.storage.local.get(['aiProvider', 'aiModel', 'apiKey', 'apiBaseUrl']);
+      const normalizedConfig = normalizeUserConfig(result);
+      setAiProvider(normalizedConfig.aiProvider);
       
       form.setValues({
-        aiModel: result.aiModel || DEFAULT_CONFIG.aiModel,
-        apiKey: result.apiKey || DEFAULT_CONFIG.apiKey,
+        aiProvider: normalizedConfig.aiProvider,
+        aiModel: normalizedConfig.aiModel,
+        apiKey: normalizedConfig.apiKey,
+        apiBaseUrl: normalizedConfig.apiBaseUrl,
       });
       form.resetDirty();
     };
@@ -200,14 +233,49 @@ const App: React.FC = () => {
   }, []);
 
   const handleSubmit = async (values: ConfigForm) => {
-    console.log('Saving config:', values);
+    const normalizedConfig = normalizeUserConfig(values);
+    console.log('Saving config:', normalizedConfig);
     await chrome.storage.local.set({
-      aiModel: values.aiModel,
-      apiKey: values.apiKey
+      aiProvider: normalizedConfig.aiProvider,
+      aiModel: normalizedConfig.aiModel,
+      apiKey: normalizedConfig.apiKey,
+      apiBaseUrl: normalizedConfig.apiBaseUrl
+    });
+    form.setValues({
+      aiProvider: normalizedConfig.aiProvider,
+      aiModel: normalizedConfig.aiModel,
+      apiKey: normalizedConfig.apiKey,
+      apiBaseUrl: normalizedConfig.apiBaseUrl,
     });
     form.resetDirty();
     showSuccessNotification(t('refreshToApply'));
   };
+
+  const handleAiProviderChange = (value: string | null) => {
+    const nextProvider = value === 'openai' ? 'openai' : 'gemini';
+    const currentModel = String(form.getValues().aiModel || '').trim();
+    const nextDefaultModel = getDefaultAiModelForProvider(nextProvider);
+    const shouldResetModel =
+      !currentModel
+      || currentModel.startsWith('gemini-')
+      || currentModel.startsWith('gpt-')
+      || currentModel.startsWith('o');
+
+    setAiProvider(nextProvider);
+    form.setFieldValue('aiProvider', nextProvider);
+
+    if (shouldResetModel) {
+      form.setFieldValue('aiModel', nextDefaultModel);
+    }
+  };
+
+  const modelOptions = getModelOptionsByProvider(aiProvider);
+  const apiBaseUrlPlaceholder = aiProvider === 'openai'
+    ? t('enterOpenAiApiBaseUrl')
+    : t('enterGeminiApiBaseUrl');
+  const apiBaseUrlDescription = aiProvider === 'openai'
+    ? t('openAiApiBaseUrlHint')
+    : t('emptyGeminiApiBaseUrlHint');
 
   return (
     <Tabs defaultValue="config" styles={{ tabLabel: { fontSize: "13px" } }}>
@@ -283,38 +351,45 @@ const App: React.FC = () => {
                   }
                 }} />
                 <Select
+                  key={form.key('aiProvider')}
+                  label={t('aiProvider')}
+                  placeholder={t('selectAiProvider')}
+                  size="xs"
+                  data={[
+                    { value: 'gemini', label: t('gemini') },
+                    { value: 'openai', label: t('openai') },
+                  ]}
+                  value={aiProvider}
+                  onChange={handleAiProviderChange}
+                />
+
+                <Autocomplete
                   {...form.getInputProps('aiModel')}
                   key={form.key('aiModel')}
                   label={t('aiModel')}
-                  placeholder="Pick value"
+                  placeholder={t('selectAiModel')}
                   maxDropdownHeight={100}
-                  searchable
                   size="xs"
-                  data={[
-                    {
-                      group: 'Gemini',
-                      items: [
-                        {
-                          value: "gemini-3.0-flash",
-                          label: "gemini-3.0-flash"
-                        },
-                        {
-                          value: "gemini-2.5-pro",
-                          label: "gemini-2.5-pro"
-                        },
-                        {
-                          value: "gemini-2.5-flash",
-                          label: "gemini-2.5-flash"
-                        },
-                      ]
-                    }
-                  ]}
+                  data={modelOptions}
                 />
 
                 <PasswordInput
                   label={t('apiKey')}
                   placeholder={t('enterApiKey')}
                   {...form.getInputProps('apiKey')}
+                  size="xs"
+                />
+
+                <TextInput
+                  mt="xs"
+                  label={t('apiBaseUrl')}
+                  placeholder={apiBaseUrlPlaceholder}
+                  description={apiBaseUrlDescription}
+                  {...form.getInputProps('apiBaseUrl')}
+                  onBlur={(event) => {
+                    const normalizedValue = normalizeApiBaseUrl(event.currentTarget.value);
+                    form.setFieldValue('apiBaseUrl', normalizedValue);
+                  }}
                   size="xs"
                 />
 

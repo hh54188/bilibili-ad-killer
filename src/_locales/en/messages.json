@@ -40,14 +40,53 @@
   "aiModel": {
     "message": "AI Model"
   },
+  "aiProvider": {
+    "message": "AI Provider"
+  },
+  "selectAiProvider": {
+    "message": "Select AI provider"
+  },
   "selectAiModel": {
     "message": "Select AI model"
   },
   "apiKey": {
     "message": "API Key"
   },
+  "apiBaseUrl": {
+    "message": "API Base URL"
+  },
   "enterApiKey": {
     "message": "Enter your API key"
+  },
+  "enterGeminiApiBaseUrl": {
+    "message": "Enter your Gemini-compatible base URL"
+  },
+  "enterOpenAiApiBaseUrl": {
+    "message": "Enter your OpenAI base URL"
+  },
+  "enterApiBaseUrl": {
+    "message": "Enter your Gemini-compatible base URL"
+  },
+  "emptyGeminiApiBaseUrlHint": {
+    "message": "Leave empty to use the official Gemini endpoint"
+  },
+  "emptyOpenAiApiBaseUrlHint": {
+    "message": "Leave empty to use the official OpenAI endpoint"
+  },
+  "openAiApiBaseUrlHint": {
+    "message": "Enter the base URL for the OpenAI Responses API. Leave it empty to use the official endpoint. For example: https://api.openai.com/v1 or https://your-proxy.example.com/v1. Do not enter a full endpoint path such as /responses."
+  },
+  "emptyApiBaseUrlHint": {
+    "message": "Leave empty to use the official Gemini endpoint"
+  },
+  "invalidApiBaseUrl": {
+    "message": "Invalid URL format. Use an address starting with http:// or https://"
+  },
+  "openAiEndpointPathNotSupported": {
+    "message": "Enter only the OpenAI base URL, not a full endpoint path such as /responses or /chat/completions."
+  },
+  "httpsPageCannotUseHttpApiBaseUrl": {
+    "message": "The Bilibili page is HTTPS, so it cannot call an HTTP AI endpoint directly. Use an HTTPS endpoint or place an HTTPS reverse proxy in front of it."
   },
   "cancel": {
     "message": "Cancel"
@@ -60,6 +99,9 @@
   },
   "gemini": {
     "message": "Gemini"
+  },
+  "openai": {
+    "message": "GPT / OpenAI"
   },
   "deepseekChat": {
     "message": "DeepSeek Chat"
@@ -96,6 +138,27 @@
   },
   "aiServiceFailed": {
     "message": "Failed to reach AI service. Please check your network connection."
+  },
+  "aiServiceAuthFailed": {
+    "message": "The AI service returned 401 Unauthorized. Check whether the API key in the popup is the CPA proxy token and whether the server accepts Authorization: Bearer."
+  },
+  "aiServiceForbidden": {
+    "message": "The AI service returned 403 Forbidden. Check server permissions, origin restrictions, and model access policy."
+  },
+  "aiServiceServerError": {
+    "message": "The AI service returned a 5xx server error. Check the CPA service or upstream model logs first."
+  },
+  "aiServiceTlsFailed": {
+    "message": "The HTTPS connection failed. Check whether the certificate is trusted by this browser and whether the hostname exactly matches the certificate SAN."
+  },
+  "aiServiceCorsFailed": {
+    "message": "The browser blocked the cross-origin request. Check whether CPA allows CORS from https://www.bilibili.com and permits the Authorization header."
+  },
+  "aiServiceTimeout": {
+    "message": "The AI request timed out. Check the CPA endpoint, network connectivity, and server processing time."
+  },
+  "aiServiceNetworkFailed": {
+    "message": "Unable to establish a network connection to the AI service. If you use a self-signed HTTPS certificate, check the trust chain and browser console first."
   },
   "checkBrowserModelDownloadProgress": {
     "message": "Check Browser Model Download Progress"
